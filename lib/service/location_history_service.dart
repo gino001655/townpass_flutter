@@ -8,7 +8,7 @@ import 'package:town_pass/service/geo_locator_service.dart';
 import 'package:town_pass/service/shared_preferences_service.dart';
 
 class LocationHistoryService extends GetxService with WidgetsBindingObserver {
-  LocationHistoryService({Duration pollingInterval = const Duration(seconds: 10)})
+  LocationHistoryService({Duration pollingInterval = const Duration(seconds: 1)})
       : _pollingInterval = pollingInterval;
 
   final Duration _pollingInterval;
@@ -75,7 +75,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   void _cleanup() {
-    final cutoff = DateTime.now().subtract(const Duration(minutes: 30));
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 15));
     _logs.removeWhere((log) => log.capturedAt.isBefore(cutoff));
   }
 
@@ -91,7 +91,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
             .whereType<Map<String, dynamic>>()
             .map(LocationLog.fromJson)
             .where((log) =>
-                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 30))))
+                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(seconds: 15))))
             .toList()
           ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
         _logs
@@ -113,7 +113,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   List<LocationLog> recentLogs({
-    Duration duration = const Duration(minutes: 30),
+    Duration duration = const Duration(seconds: 15),
     int? limit,
   }) {
     final cutoff = DateTime.now().subtract(duration);
