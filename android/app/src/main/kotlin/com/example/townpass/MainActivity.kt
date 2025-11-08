@@ -49,13 +49,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startLocationService() {
-        if (!isLocationServiceRunning()) {
-            val intent = Intent(applicationContext, LocationTrackingService::class.java)
-            ContextCompat.startForegroundService(applicationContext, intent)
-            println("[MainActivity] startForegroundService invoked")
-        } else {
-            println("[MainActivity] service already running")
-        }
+        val intent = Intent(applicationContext, LocationTrackingService::class.java)
+        ContextCompat.startForegroundService(applicationContext, intent)
+        println("[MainActivity] startForegroundService invoked")
     }
 
     private fun stopLocationService() {

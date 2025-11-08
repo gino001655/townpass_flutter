@@ -103,6 +103,7 @@ class LocationTrackingService : Service() {
         } else {
             true
         }
+        println("[LocationTrackingService] hasLocationPermission fine=$fine background=$background")
         return fine && background
     }
 

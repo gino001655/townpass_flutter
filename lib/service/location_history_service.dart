@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:town_pass/bean/location_log.dart';
 import 'package:town_pass/service/shared_preferences_service.dart';
@@ -32,17 +33,37 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('[LocationHistoryService] lifecycle change: $state');
     if (state == AppLifecycleState.resumed) {
-      unawaited(_ensureServiceRunning());
+      unawaited(_ensureServiceRunning(force: true));
       unawaited(_restoreFromCache());
     }
   }
 
-  Future<void> _ensureServiceRunning() async {
+  Future<void> _ensureServiceRunning({bool force = false}) async {
     try {
       debugPrint('[LocationHistoryService] ensure service running...');
-      await _methodChannel.invokeMethod<void>('start');
-      _serviceRequested = true;
-      debugPrint('[LocationHistoryService] start command sent');
+      final permission = await Geolocator.checkPermission();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final hasBackground = permission == LocationPermission.always;
+
+      debugPrint(
+        '[LocationHistoryService] ensure -> serviceEnabled=$serviceEnabled, permission=$permission',
+      );
+
+    if (!serviceEnabled || !hasBackground) {
+        debugPrint('[LocationHistoryService] not starting service (conditions unmet)');
+        if (_serviceRequested) {
+          await stopService();
+        }
+        return;
+      }
+
+      if (!_serviceRequested || force) {
+        await _methodChannel.invokeMethod<void>('start');
+        _serviceRequested = true;
+        debugPrint('[LocationHistoryService] start command sent');
+      } else {
+        debugPrint('[LocationHistoryService] service already requested');
+      }
     } catch (error) {
       debugPrint('[LocationHistoryService] start service failed: $error');
     }
@@ -197,6 +218,70 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
     _eventSubscription?.cancel();
     _eventSubscription = null;
     super.onClose();
+  }
+
+  Future<Map<String, dynamic>> permissionStatus() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final permission = await Geolocator.checkPermission();
+    if (!serviceEnabled) {
+      debugPrint('[LocationHistoryService] permissionStatus -> service disabled');
+    }
+    final status = _describePermission(permission);
+
+    final hasLocationPermission = permission != LocationPermission.denied &&
+        permission != LocationPermission.deniedForever;
+    final hasBackgroundPermission = permission == LocationPermission.always;
+
+    return <String, dynamic>{
+      'status': status,
+      'permission': permission.name,
+      'serviceEnabled': serviceEnabled,
+      'hasLocationPermission': hasLocationPermission,
+      'hasBackgroundPermission': hasBackgroundPermission,
+    };
+  }
+
+  Future<Map<String, dynamic>> requestPermission() async {
+    debugPrint('[LocationHistoryService] requestPermission');
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    final payload = await permissionStatus();
+    await _syncServiceWithPermission(permission);
+    return payload;
+  }
+
+  Future<Map<String, dynamic>> openAppSettings() async {
+    debugPrint('[LocationHistoryService] openAppSettings');
+    final opened = await Geolocator.openAppSettings();
+    final payload = await permissionStatus();
+    payload['opened'] = opened;
+    await _syncServiceWithPermission(await Geolocator.checkPermission());
+    return payload;
+  }
+
+  Future<void> _syncServiceWithPermission(LocationPermission permission) async {
+    if (permission == LocationPermission.always) {
+      await _ensureServiceRunning(force: true);
+    } else {
+      await stopService();
+    }
+  }
+
+  String _describePermission(LocationPermission permission) {
+    switch (permission) {
+      case LocationPermission.denied:
+        return 'denied';
+      case LocationPermission.deniedForever:
+        return 'deniedForever';
+      case LocationPermission.whileInUse:
+        return 'whileInUse';
+      case LocationPermission.always:
+        return 'always';
+      case LocationPermission.unableToDetermine:
+        return 'unableToDetermine';
+    }
   }
 }
 

@@ -241,6 +241,54 @@ class LocationHistoryMessageHandler extends TPWebMessageHandler {
   }
 }
 
+class LocationPermissionStatusMessageHandler extends TPWebMessageHandler {
+  @override
+  String get name => 'location_permission_status';
+
+  @override
+  Future<void> handle({
+    required Object? message,
+    required WebUri? sourceOrigin,
+    required bool isMainFrame,
+    required Function(WebMessage replyWebMessage)? onReply,
+  }) async {
+    final status = await Get.find<LocationHistoryService>().permissionStatus();
+    onReply?.call(replyWebMessage(data: status));
+  }
+}
+
+class LocationPermissionRequestMessageHandler extends TPWebMessageHandler {
+  @override
+  String get name => 'location_permission_request';
+
+  @override
+  Future<void> handle({
+    required Object? message,
+    required WebUri? sourceOrigin,
+    required bool isMainFrame,
+    required Function(WebMessage replyWebMessage)? onReply,
+  }) async {
+    final status = await Get.find<LocationHistoryService>().requestPermission();
+    onReply?.call(replyWebMessage(data: status));
+  }
+}
+
+class LocationPermissionOpenSettingsMessageHandler extends TPWebMessageHandler {
+  @override
+  String get name => 'location_permission_open_settings';
+
+  @override
+  Future<void> handle({
+    required Object? message,
+    required WebUri? sourceOrigin,
+    required bool isMainFrame,
+    required Function(WebMessage replyWebMessage)? onReply,
+  }) async {
+    final response = await Get.find<LocationHistoryService>().openAppSettings();
+    onReply?.call(replyWebMessage(data: response));
+  }
+}
+
 class DeviceInfoMessageHandler extends TPWebMessageHandler {
   @override
   String get name => 'deviceinfo';
