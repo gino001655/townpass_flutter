@@ -8,7 +8,7 @@ import 'package:town_pass/service/geo_locator_service.dart';
 import 'package:town_pass/service/shared_preferences_service.dart';
 
 class LocationHistoryService extends GetxService with WidgetsBindingObserver {
-  LocationHistoryService({Duration pollingInterval = const Duration(seconds: 1)})
+  LocationHistoryService({Duration pollingInterval = const Duration(seconds: 10)})
       : _pollingInterval = pollingInterval;
 
   final Duration _pollingInterval;
@@ -46,6 +46,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
     if (_timer != null) {
       return;
     }
+    debugPrint('[LocationHistoryService] start tracking every ${_pollingInterval.inSeconds}s');
     _timer = Timer.periodic(_pollingInterval, (_) {
       unawaited(_captureOnce());
     });
@@ -55,6 +56,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   void _stop() {
     _timer?.cancel();
     _timer = null;
+    debugPrint('[LocationHistoryService] stop tracking, persisting ${_logs.length} logs');
     _persist();
   }
 
@@ -67,6 +69,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
         capturedAt: DateTime.now(),
       );
       _logs.add(log);
+      debugPrint('[LocationHistoryService] capture lat=${log.latitude}, lng=${log.longitude}, total=${_logs.length}');
       _cleanup();
       _persist();
     } catch (error) {
@@ -75,8 +78,9 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   void _cleanup() {
-    final cutoff = DateTime.now().subtract(const Duration(seconds: 15));
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 30));
     _logs.removeWhere((log) => log.capturedAt.isBefore(cutoff));
+    debugPrint('[LocationHistoryService] cleanup older than $cutoff, remaining=${_logs.length}');
   }
 
   Future<void> _restoreFromCache() async {
@@ -91,12 +95,13 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
             .whereType<Map<String, dynamic>>()
             .map(LocationLog.fromJson)
             .where((log) =>
-                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(seconds: 15))))
+                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 30))))
             .toList()
           ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
         _logs
           ..clear()
           ..addAll(restored);
+        debugPrint('[LocationHistoryService] restore from cache, loaded ${_logs.length} logs');
       }
     } catch (error) {
       debugPrint('[LocationHistoryService] restore cache failed: $error');
@@ -107,13 +112,14 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
     try {
       final cache = jsonEncode(_logs.map((log) => log.toJson()).toList());
       _sharedPreferencesService.instance.setString(_prefsKey, cache);
+      debugPrint('[LocationHistoryService] persist ${_logs.length} logs');
     } catch (error) {
       debugPrint('[LocationHistoryService] persist cache failed: $error');
     }
   }
 
   List<LocationLog> recentLogs({
-    Duration duration = const Duration(seconds: 15),
+    Duration duration = const Duration(minutes: 30),
     int? limit,
   }) {
     final cutoff = DateTime.now().subtract(duration);
