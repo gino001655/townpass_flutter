@@ -15,6 +15,14 @@ class LocationLog {
         'capturedAt': capturedAt.toIso8601String(),
       };
 
+  factory LocationLog.fromJson(Map<String, dynamic> json) {
+    return LocationLog(
+      latitude: (json['latitude'] as num).toDouble(),
+      longitude: (json['longitude'] as num).toDouble(),
+      capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
   LocationLog copyWith({
     double? latitude,
     double? longitude,

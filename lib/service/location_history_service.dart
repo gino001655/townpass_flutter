@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:town_pass/bean/location_log.dart';
 import 'package:town_pass/service/geo_locator_service.dart';
+import 'package:town_pass/service/shared_preferences_service.dart';
 
 class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   LocationHistoryService({Duration pollingInterval = const Duration(seconds: 10)})
@@ -14,9 +16,13 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   Timer? _timer;
 
   GeoLocatorService get _geoLocatorService => Get.find<GeoLocatorService>();
+  SharedPreferencesService get _sharedPreferencesService => Get.find<SharedPreferencesService>();
+
+  static const String _prefsKey = 'location_history_cache';
 
   Future<LocationHistoryService> init() async {
     WidgetsBinding.instance.addObserver(this);
+    await _restoreFromCache();
     _startIfNeeded();
     return this;
   }
@@ -49,6 +55,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   void _stop() {
     _timer?.cancel();
     _timer = null;
+    _persist();
   }
 
   Future<void> _captureOnce() async {
@@ -61,6 +68,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
       );
       _logs.add(log);
       _cleanup();
+      _persist();
     } catch (error) {
       debugPrint('[LocationHistoryService] capture failed: $error');
     }
@@ -69,6 +77,39 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   void _cleanup() {
     final cutoff = DateTime.now().subtract(const Duration(minutes: 30));
     _logs.removeWhere((log) => log.capturedAt.isBefore(cutoff));
+  }
+
+  Future<void> _restoreFromCache() async {
+    final cache = _sharedPreferencesService.instance.getString(_prefsKey);
+    if (cache == null || cache.isEmpty) {
+      return;
+    }
+    try {
+      final decoded = jsonDecode(cache);
+      if (decoded is List) {
+        final restored = decoded
+            .whereType<Map<String, dynamic>>()
+            .map(LocationLog.fromJson)
+            .where((log) =>
+                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 30))))
+            .toList()
+          ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
+        _logs
+          ..clear()
+          ..addAll(restored);
+      }
+    } catch (error) {
+      debugPrint('[LocationHistoryService] restore cache failed: $error');
+    }
+  }
+
+  void _persist() {
+    try {
+      final cache = jsonEncode(_logs.map((log) => log.toJson()).toList());
+      _sharedPreferencesService.instance.setString(_prefsKey, cache);
+    } catch (error) {
+      debugPrint('[LocationHistoryService] persist cache failed: $error');
+    }
   }
 
   List<LocationLog> recentLogs({
@@ -89,6 +130,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
 
   void clear() {
     _logs.clear();
+    _sharedPreferencesService.instance.remove(_prefsKey);
   }
 
   @override
