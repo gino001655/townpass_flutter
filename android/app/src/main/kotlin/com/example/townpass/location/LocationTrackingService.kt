@@ -35,8 +35,10 @@ class LocationTrackingService : Service() {
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        println("[LocationTrackingService] onCreate")
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
+                println("[LocationTrackingService] onLocationResult: ${locationResult.locations.size} locations")
                 val location = locationResult.lastLocation ?: return
                 val capturedAt = dateFormat.format(Date())
                 saveLocation(location.latitude, location.longitude, capturedAt)
@@ -47,12 +49,14 @@ class LocationTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        println("[LocationTrackingService] onStartCommand")
         startForeground(NOTIFICATION_ID, buildNotification())
         requestLocationUpdates()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        println("[LocationTrackingService] onDestroy")
         fusedLocationClient.removeLocationUpdates(locationCallback)
         super.onDestroy()
     }
@@ -61,6 +65,7 @@ class LocationTrackingService : Service() {
 
     private fun requestLocationUpdates() {
         if (!hasLocationPermission()) {
+            println("[LocationTrackingService] missing location permission")
             return
         }
 
@@ -78,8 +83,10 @@ class LocationTrackingService : Service() {
                 locationCallback,
                 mainLooper
             )
+            println("[LocationTrackingService] requestLocationUpdates registered")
         } catch (error: SecurityException) {
             // Missing permission
+            println("[LocationTrackingService] requestLocationUpdates failed: $error")
         }
     }
 
@@ -129,6 +136,7 @@ class LocationTrackingService : Service() {
         }
         filtered.put(newEntry)
         prefs.edit().putString(PREFS_KEY, filtered.toString()).apply()
+        println("[LocationTrackingService] saveLocation -> total=${filtered.length()}")
     }
 
     private fun parseDate(value: String): Date? {

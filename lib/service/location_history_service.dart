@@ -19,15 +19,18 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   SharedPreferencesService get _sharedPreferencesService => Get.find<SharedPreferencesService>();
 
   Future<LocationHistoryService> init() async {
+    debugPrint('[LocationHistoryService] init start');
     WidgetsBinding.instance.addObserver(this);
     await _restoreFromCache();
     await _ensureServiceRunning();
     _listenToStream();
+    debugPrint('[LocationHistoryService] init completed');
     return this;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('[LocationHistoryService] lifecycle change: $state');
     if (state == AppLifecycleState.resumed) {
       unawaited(_ensureServiceRunning());
       unawaited(_restoreFromCache());
@@ -36,8 +39,10 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
 
   Future<void> _ensureServiceRunning() async {
     try {
+      debugPrint('[LocationHistoryService] ensure service running...');
       await _methodChannel.invokeMethod<void>('start');
       _serviceRequested = true;
+      debugPrint('[LocationHistoryService] start command sent');
     } catch (error) {
       debugPrint('[LocationHistoryService] start service failed: $error');
     }
@@ -45,6 +50,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
 
   Future<void> stopService() async {
     try {
+      debugPrint('[LocationHistoryService] stop service command');
       await _methodChannel.invokeMethod<void>('stop');
       _serviceRequested = false;
     } catch (error) {
@@ -55,6 +61,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   Future<bool> isServiceRunning() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('isRunning');
+      debugPrint('[LocationHistoryService] isRunning -> $result');
       return result ?? false;
     } catch (error) {
       debugPrint('[LocationHistoryService] isRunning failed: $error');
@@ -63,6 +70,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   void _listenToStream() {
+    debugPrint('[LocationHistoryService] listen to stream');
     _eventSubscription ??=
         _eventChannel.receiveBroadcastStream().listen(_handleIncomingEvent, onError: (error) {
       debugPrint('[LocationHistoryService] stream error: $error');
@@ -70,7 +78,9 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   void _handleIncomingEvent(dynamic event) {
+    debugPrint('[LocationHistoryService] event received: $event');
     if (event is! Map) {
+      debugPrint('[LocationHistoryService] event ignored: not a map');
       return;
     }
     try {
@@ -81,6 +91,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
       final longitude =
           longitudeRaw is num ? longitudeRaw.toDouble() : double.tryParse('$longitudeRaw');
       if (latitude == null || longitude == null) {
+        debugPrint('[LocationHistoryService] event ignored: invalid lat/lng');
         return;
       }
       final capturedAtRaw = event['capturedAt'];
@@ -116,13 +127,16 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<void> _restoreFromCache() async {
+    debugPrint('[LocationHistoryService] restore cache start');
     final cache = _sharedPreferencesService.instance.getString(_prefsKey);
     if (cache == null || cache.isEmpty) {
+      debugPrint('[LocationHistoryService] restore cache skipped (empty)');
       return;
     }
     try {
       final decoded = jsonDecode(cache);
       if (decoded is! List) {
+        debugPrint('[LocationHistoryService] restore cache format mismatch');
         return;
       }
       final restored = decoded
@@ -173,10 +187,12 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   void clear() {
     _logs.clear();
     _sharedPreferencesService.instance.remove(_prefsKey);
+    debugPrint('[LocationHistoryService] clear logs & cache');
   }
 
   @override
   void onClose() {
+    debugPrint('[LocationHistoryService] onClose');
     WidgetsBinding.instance.removeObserver(this);
     _eventSubscription?.cancel();
     _eventSubscription = null;

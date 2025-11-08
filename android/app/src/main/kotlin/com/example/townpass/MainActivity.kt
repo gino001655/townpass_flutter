@@ -17,6 +17,7 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_METHOD_CHANNEL)
             .setMethodCallHandler { call, result ->
+                println("[MainActivity] MethodChannel call: ${call.method}")
                 when (call.method) {
                     "start" -> {
                         startLocationService()
@@ -36,10 +37,12 @@ class MainActivity : FlutterActivity() {
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_EVENT_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    println("[MainActivity] EventChannel listener attached")
                     eventSink = events
                 }
 
                 override fun onCancel(arguments: Any?) {
+                    println("[MainActivity] EventChannel listener cancelled")
                     eventSink = null
                 }
             })
@@ -49,12 +52,16 @@ class MainActivity : FlutterActivity() {
         if (!isLocationServiceRunning()) {
             val intent = Intent(applicationContext, LocationTrackingService::class.java)
             ContextCompat.startForegroundService(applicationContext, intent)
+            println("[MainActivity] startForegroundService invoked")
+        } else {
+            println("[MainActivity] service already running")
         }
     }
 
     private fun stopLocationService() {
         val intent = Intent(applicationContext, LocationTrackingService::class.java)
         applicationContext.stopService(intent)
+        println("[MainActivity] stopService invoked")
     }
 
     private fun isLocationServiceRunning(): Boolean {
@@ -75,6 +82,7 @@ class MainActivity : FlutterActivity() {
         @JvmStatic
         fun emitLocationUpdate(payload: Map<String, Any>) {
             eventSink?.success(payload)
+            println("[MainActivity] emit location: $payload")
         }
     }
 }
