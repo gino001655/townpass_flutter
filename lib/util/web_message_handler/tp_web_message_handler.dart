@@ -8,6 +8,7 @@ import 'package:town_pass/gen/assets.gen.dart';
 import 'package:town_pass/service/account_service.dart';
 import 'package:town_pass/service/device_service.dart';
 import 'package:town_pass/service/geo_locator_service.dart';
+import 'package:town_pass/service/location_history_service.dart';
 import 'package:town_pass/service/notification_service.dart';
 import 'package:town_pass/service/shared_preferences_service.dart';
 import 'package:town_pass/service/subscription_service.dart';
@@ -191,6 +192,52 @@ class LocationMessageHandler extends TPWebMessageHandler {
     onReply?.call(replyWebMessage(
       data: position?.toJson() ?? [],
     ));
+  }
+}
+
+class LocationHistoryMessageHandler extends TPWebMessageHandler {
+  @override
+  String get name => 'location_history';
+
+  Duration _parseDuration(Object? message) {
+    if (message is Map && message['minutes'] is num) {
+      final minutes = (message['minutes'] as num).clamp(1, 180).toInt();
+      return Duration(minutes: minutes);
+    }
+    return const Duration(minutes: 30);
+  }
+
+  int? _parseLimit(Object? message) {
+    if (message is Map && message['limit'] is num) {
+      final limit = (message['limit'] as num).toInt();
+      if (limit <= 0) {
+        return null;
+      }
+      return limit;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> handle({
+    required Object? message,
+    required WebUri? sourceOrigin,
+    required bool isMainFrame,
+    required Function(WebMessage replyWebMessage)? onReply,
+  }) async {
+    final service = Get.find<LocationHistoryService>();
+    final duration = _parseDuration(message);
+    final limit = _parseLimit(message);
+    final logs = service
+        .recentLogs(duration: duration, limit: limit)
+        .map((log) => log.toJson())
+        .toList();
+
+    onReply?.call(
+      replyWebMessage(
+        data: logs,
+      ),
+    );
   }
 }
 
