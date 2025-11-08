@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_channel_location">Location Tracking</string>
+    <string name="notification_channel_location_description">Keeps location tracking active while Town Pass runs in the background.</string>
+    <string name="notification_title">Town Pass 正在記錄定位</string>
+    <string name="notification_content">持續更新裝置位置以供微服務使用。</string>
+</resources>
+

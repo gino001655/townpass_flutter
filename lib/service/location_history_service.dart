@@ -1,86 +1,118 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:town_pass/bean/location_log.dart';
-import 'package:town_pass/service/geo_locator_service.dart';
 import 'package:town_pass/service/shared_preferences_service.dart';
 
 class LocationHistoryService extends GetxService with WidgetsBindingObserver {
-  LocationHistoryService({Duration pollingInterval = const Duration(seconds: 10)})
-      : _pollingInterval = pollingInterval;
-
-  final Duration _pollingInterval;
-  final List<LocationLog> _logs = <LocationLog>[];
-  Timer? _timer;
-
-  GeoLocatorService get _geoLocatorService => Get.find<GeoLocatorService>();
-  SharedPreferencesService get _sharedPreferencesService => Get.find<SharedPreferencesService>();
-
+  static const MethodChannel _methodChannel = MethodChannel('townpass/location_service');
+  static const EventChannel _eventChannel = EventChannel('townpass/location_stream');
   static const String _prefsKey = 'location_history_cache';
+
+  final List<LocationLog> _logs = <LocationLog>[];
+  StreamSubscription<dynamic>? _eventSubscription;
+  bool _serviceRequested = false;
+
+  SharedPreferencesService get _sharedPreferencesService => Get.find<SharedPreferencesService>();
 
   Future<LocationHistoryService> init() async {
     WidgetsBinding.instance.addObserver(this);
     await _restoreFromCache();
-    _startIfNeeded();
+    await _ensureServiceRunning();
+    _listenToStream();
     return this;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _startIfNeeded();
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
-        _stop();
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_ensureServiceRunning());
+      unawaited(_restoreFromCache());
     }
   }
 
-  bool get isTracking => _timer != null;
+  Future<void> _ensureServiceRunning() async {
+    try {
+      await _methodChannel.invokeMethod<void>('start');
+      _serviceRequested = true;
+    } catch (error) {
+      debugPrint('[LocationHistoryService] start service failed: $error');
+    }
+  }
 
-  void _startIfNeeded() {
-    if (_timer != null) {
+  Future<void> stopService() async {
+    try {
+      await _methodChannel.invokeMethod<void>('stop');
+      _serviceRequested = false;
+    } catch (error) {
+      debugPrint('[LocationHistoryService] stop service failed: $error');
+    }
+  }
+
+  Future<bool> isServiceRunning() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('isRunning');
+      return result ?? false;
+    } catch (error) {
+      debugPrint('[LocationHistoryService] isRunning failed: $error');
+      return false;
+    }
+  }
+
+  void _listenToStream() {
+    _eventSubscription ??=
+        _eventChannel.receiveBroadcastStream().listen(_handleIncomingEvent, onError: (error) {
+      debugPrint('[LocationHistoryService] stream error: $error');
+    });
+  }
+
+  void _handleIncomingEvent(dynamic event) {
+    if (event is! Map) {
       return;
     }
-    debugPrint('[LocationHistoryService] start tracking every ${_pollingInterval.inSeconds}s');
-    _timer = Timer.periodic(_pollingInterval, (_) {
-      unawaited(_captureOnce());
-    });
-    unawaited(_captureOnce());
-  }
-
-  void _stop() {
-    _timer?.cancel();
-    _timer = null;
-    debugPrint('[LocationHistoryService] stop tracking, persisting ${_logs.length} logs');
-    _persist();
-  }
-
-  Future<void> _captureOnce() async {
     try {
-      final position = await _geoLocatorService.position();
+      final latitudeRaw = event['latitude'];
+      final longitudeRaw = event['longitude'];
+      final latitude =
+          latitudeRaw is num ? latitudeRaw.toDouble() : double.tryParse('$latitudeRaw');
+      final longitude =
+          longitudeRaw is num ? longitudeRaw.toDouble() : double.tryParse('$longitudeRaw');
+      if (latitude == null || longitude == null) {
+        return;
+      }
+      final capturedAtRaw = event['capturedAt'];
+      final capturedAtUtc = capturedAtRaw is String
+          ? DateTime.tryParse(capturedAtRaw)?.toUtc() ?? DateTime.now().toUtc()
+          : DateTime.now().toUtc();
+
       final log = LocationLog(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        capturedAt: DateTime.now(),
+        latitude: latitude,
+        longitude: longitude,
+        capturedAt: capturedAtUtc.toLocal(),
       );
       _logs.add(log);
-      debugPrint('[LocationHistoryService] capture lat=${log.latitude}, lng=${log.longitude}, total=${_logs.length}');
+      debugPrint(
+        '[LocationHistoryService] stream lat=${log.latitude}, lng=${log.longitude}, total=${_logs.length}',
+      );
       _cleanup();
       _persist();
     } catch (error) {
-      debugPrint('[LocationHistoryService] capture failed: $error');
+      debugPrint('[LocationHistoryService] handle event failed: $error');
     }
   }
 
   void _cleanup() {
     final cutoff = DateTime.now().subtract(const Duration(minutes: 2));
+    final before = _logs.length;
     _logs.removeWhere((log) => log.capturedAt.isBefore(cutoff));
-    debugPrint('[LocationHistoryService] cleanup older than $cutoff, remaining=${_logs.length}');
+    if (before != _logs.length) {
+      debugPrint(
+        '[LocationHistoryService] cleanup removed ${before - _logs.length}, remaining=${_logs.length}',
+      );
+    }
   }
 
   Future<void> _restoreFromCache() async {
@@ -90,19 +122,23 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
     }
     try {
       final decoded = jsonDecode(cache);
-      if (decoded is List) {
-        final restored = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(LocationLog.fromJson)
-            .where((log) =>
-                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 2))))
-            .toList()
-          ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
-        _logs
-          ..clear()
-          ..addAll(restored);
-        debugPrint('[LocationHistoryService] restore from cache, loaded ${_logs.length} logs');
+      if (decoded is! List) {
+        return;
       }
+      final restored = decoded
+          .whereType<Map<String, dynamic>>()
+          .map(LocationLog.fromJson)
+          .where(
+            (log) => log.capturedAt.isAfter(
+              DateTime.now().subtract(const Duration(minutes: 2)),
+            ),
+          )
+          .toList()
+        ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
+      _logs
+        ..clear()
+        ..addAll(restored);
+      debugPrint('[LocationHistoryService] restore cache loaded ${_logs.length}');
     } catch (error) {
       debugPrint('[LocationHistoryService] restore cache failed: $error');
     }
@@ -110,8 +146,8 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
 
   void _persist() {
     try {
-      final cache = jsonEncode(_logs.map((log) => log.toJson()).toList());
-      _sharedPreferencesService.instance.setString(_prefsKey, cache);
+      final data = jsonEncode(_logs.map((log) => log.toJson()).toList());
+      _sharedPreferencesService.instance.setString(_prefsKey, data);
       debugPrint('[LocationHistoryService] persist ${_logs.length} logs');
     } catch (error) {
       debugPrint('[LocationHistoryService] persist cache failed: $error');
@@ -142,7 +178,8 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   @override
   void onClose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stop();
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
     super.onClose();
   }
 }
