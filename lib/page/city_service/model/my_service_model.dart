@@ -54,7 +54,7 @@ extension MyServiceIdExt on MyServiceItemId {
           description: '陳情系統',
           icon: Assets.svg.iconTalk.svg(),
           category: MyServiceCategory.cityService,
-          destinationUrl: 'https://taipei-pass-service.vercel.app/citizen-report/',
+          destinationUrl: 'https://ws10.csie.ntu.edu.tw:54443/',
         ),
       MyServiceItemId.reservation => MyServiceItem(
           title: '臨櫃叫號',
