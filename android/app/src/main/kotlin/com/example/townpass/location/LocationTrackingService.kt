@@ -87,6 +87,7 @@ class LocationTrackingService : Service() {
         } catch (error: SecurityException) {
             // Missing permission
             println("[LocationTrackingService] requestLocationUpdates failed: $error")
+            stopSelf()
         }
     }
 

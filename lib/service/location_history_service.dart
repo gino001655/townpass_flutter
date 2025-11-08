@@ -49,8 +49,8 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
         '[LocationHistoryService] ensure -> serviceEnabled=$serviceEnabled, permission=$permission',
       );
 
-    if (!serviceEnabled || !hasBackground) {
-        debugPrint('[LocationHistoryService] not starting service (conditions unmet)');
+      if (!serviceEnabled || !hasBackground) {
+        debugPrint('[LocationHistoryService] stop service: conditions unmet');
         if (_serviceRequested) {
           await stopService();
         }
@@ -232,13 +232,15 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
         permission != LocationPermission.deniedForever;
     final hasBackgroundPermission = permission == LocationPermission.always;
 
-    return <String, dynamic>{
+    final payload = <String, dynamic>{
       'status': status,
       'permission': permission.name,
       'serviceEnabled': serviceEnabled,
       'hasLocationPermission': hasLocationPermission,
       'hasBackgroundPermission': hasBackgroundPermission,
     };
+    await _syncServiceWithPermission(permission);
+    return payload;
   }
 
   Future<Map<String, dynamic>> requestPermission() async {
@@ -257,7 +259,6 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
     final opened = await Geolocator.openAppSettings();
     final payload = await permissionStatus();
     payload['opened'] = opened;
-    await _syncServiceWithPermission(await Geolocator.checkPermission());
     return payload;
   }
 
