@@ -78,7 +78,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   void _cleanup() {
-    final cutoff = DateTime.now().subtract(const Duration(minutes: 30));
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 2));
     _logs.removeWhere((log) => log.capturedAt.isBefore(cutoff));
     debugPrint('[LocationHistoryService] cleanup older than $cutoff, remaining=${_logs.length}');
   }
@@ -95,7 +95,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
             .whereType<Map<String, dynamic>>()
             .map(LocationLog.fromJson)
             .where((log) =>
-                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 30))))
+                log.capturedAt.isAfter(DateTime.now().subtract(const Duration(minutes: 2))))
             .toList()
           ..sort((a, b) => a.capturedAt.compareTo(b.capturedAt));
         _logs
@@ -119,7 +119,7 @@ class LocationHistoryService extends GetxService with WidgetsBindingObserver {
   }
 
   List<LocationLog> recentLogs({
-    Duration duration = const Duration(minutes: 30),
+    Duration duration = const Duration(minutes: 2),
     int? limit,
   }) {
     final cutoff = DateTime.now().subtract(duration);
